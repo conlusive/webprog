@@ -2,49 +2,43 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { Command } from 'commander';
 
+// ---------- 1. Параметри командного рядка ----------
 const program = new Command();
 
 program
-  .name('house-server')
-  .description('HTTP-сервер, що віддає дані про будинки у форматі JSON')
-  // -h потрібен для --host, тому довідка лишається тільки як --help
-  .helpOption('--help', 'показати довідку')
+  .helpOption('--help', 'показати довідку') // -h потрібен для --host
   .requiredOption('-i, --input <path>', 'шлях до файлу даних')
   .requiredOption('-h, --host <address>', 'адреса сервера')
   .requiredOption('-p, --port <number>', 'порт сервера')
-  .option('-o, --output <path>', 'файл, у який записується остання відповідь');
+  .option('-o, --output <path>', 'файл для запису останньої відповіді');
 
 program.parse();
 const options = program.opts();
 
-// Перевірка порту
-if (!/^\d+$/.test(options.port) || Number(options.port) > 65535) {
-  console.error('Некоректний порт: потрібне ціле число від 0 до 65535');
+const port = Number(options.port);
+if (!Number.isInteger(port) || port < 0 || port > 65535) {
+  console.error('Некоректний порт');
   process.exit(1);
 }
 
-// Перетворює значення (число або рядок) на число; якщо не вийшло — null
+// ---------- 2. Допоміжні функції ----------
+
+// Перетворює значення на число; якщо не число — повертає null
 function toNumber(value) {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : null;
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return null;
   }
-  if (typeof value === 'string' && value.trim() !== '') {
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
-  }
-  return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
-// Відправляє відповідь клієнту
+// Надсилає відповідь клієнту
 function respond(res, status, body) {
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
-  });
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(body);
 }
 
-// Формує JSON, за потреби записує його в --output і відправляє відповідь
+// Перетворює дані на JSON, за потреби записує у --output, потім відповідає
 function sendJson(res, status, data) {
   const body = JSON.stringify(data);
 
@@ -55,7 +49,6 @@ function sendJson(res, status, data) {
 
   fs.writeFile(options.output, body, (err) => {
     if (err) {
-      // відповідь не вдалося записати — повідомляємо про це клієнту
       respond(res, 500, JSON.stringify({ error: 'Не вдалося записати відповідь у файл' }));
       return;
     }
@@ -63,60 +56,54 @@ function sendJson(res, status, data) {
   });
 }
 
-// Читає файл NDJSON; callback(err, records) — error-first
+// Читає файл NDJSON (по одному JSON-об'єкту в рядку)
+// Результат передається через callback(err, records)
 function readData(callback) {
   fs.readFile(options.input, 'utf8', (err, text) => {
     if (err) {
       callback(new Error('Не вдалося прочитати файл даних'));
       return;
     }
-    const records = [];
-    const lines = text.replace(/^﻿/, '').split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (line === '') {
-        continue; // порожні рядки пропускаємо
-      }
-      let record;
-      try {
-        record = JSON.parse(line);
-      } catch (parseError) {
-        callback(new Error(`Файл даних пошкоджений (рядок ${i + 1})`));
-        return;
-      }
-      if (record === null || typeof record !== 'object' || Array.isArray(record)) {
-        callback(new Error(`Файл даних пошкоджений (рядок ${i + 1})`));
-        return;
-      }
-      records.push(record);
+
+    let records;
+    try {
+      records = text
+        .split('\n')
+        .filter((line) => line.trim() !== '') // пропускаємо порожні рядки
+        .map((line) => JSON.parse(line));
+    } catch (parseError) {
+      callback(new Error('Файл даних пошкоджений'));
+      return;
     }
+
+    // кожен запис має бути об'єктом
+    if (records.some((r) => r === null || typeof r !== 'object')) {
+      callback(new Error('Файл даних пошкоджений'));
+      return;
+    }
+
     callback(null, records);
   });
 }
 
-// Обробка запиту
+// ---------- 3. Обробка запиту ----------
 function handleRequest(req, res) {
-  let url;
-  try {
-    url = new URL(req.url, 'http://localhost');
-  } catch (urlError) {
-    sendJson(res, 400, { error: 'Некоректна адреса запиту' });
-    return;
-  }
+  // розділяємо адресу на шлях і рядок запиту: "/?a=1" -> "/" і "a=1"
+  const [path, query] = req.url.split('?');
+  const params = new URLSearchParams(query);
 
-  if (url.pathname !== '/') {
+  if (path !== '/') {
     sendJson(res, 404, { error: 'Маршрут не знайдено' });
     return;
   }
 
-  // furnished — прапорець, діє тільки значення "true"
-  const onlyFurnished = url.searchParams.get('furnished') === 'true';
+  // прапорець: працює лише значення "true"
+  const onlyFurnished = params.get('furnished') === 'true';
 
-  // max_price — число, строга межа
-  const maxPriceText = url.searchParams.get('max_price');
+  // число: якщо параметр є, але це не число — помилка 400
   let maxPrice = null;
-  if (maxPriceText !== null) {
-    maxPrice = toNumber(maxPriceText);
+  if (params.has('max_price')) {
+    maxPrice = toNumber(params.get('max_price'));
     if (maxPrice === null) {
       sendJson(res, 400, { error: 'Параметр max_price має бути числом' });
       return;
@@ -136,7 +123,6 @@ function handleRequest(req, res) {
       if (onlyFurnished && record.furnishingstatus !== 'furnished') {
         continue;
       }
-      // price < max_price; якщо ціни немає — запис не проходить фільтр
       if (maxPrice !== null && (price === null || price >= maxPrice)) {
         continue;
       }
@@ -147,12 +133,14 @@ function handleRequest(req, res) {
         furnishingstatus: record.furnishingstatus ?? null,
       });
     }
+
     sendJson(res, 200, result);
   });
 }
 
-// Запуск: спочатку перевіряємо, що файл існує
-fs.access(options.input, fs.constants.F_OK, (err) => {
+// ---------- 4. Запуск сервера ----------
+// спочатку перевіряємо, що файл даних існує
+fs.access(options.input, (err) => {
   if (err) {
     console.error('Cannot find input file');
     process.exit(1);
@@ -161,11 +149,11 @@ fs.access(options.input, fs.constants.F_OK, (err) => {
   const server = http.createServer(handleRequest);
 
   server.on('error', (serverError) => {
-    console.error(`Помилка сервера: ${serverError.message}`);
+    console.error('Помилка сервера: ' + serverError.message);
     process.exit(1);
   });
 
-  server.listen(Number(options.port), options.host, () => {
-    console.log(`Сервер запущено: http://${options.host}:${options.port}/`);
+  server.listen(port, options.host, () => {
+    console.log(`Сервер запущено: http://${options.host}:${port}/`);
   });
 });
