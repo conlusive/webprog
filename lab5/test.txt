@@ -1,0 +1,80 @@
+# Команди, якими перевірено сервер (curl).
+# Запуск сервера (у першому терміналі):
+node main.js -h 127.0.0.1 -p 3000 -c ./cache
+
+# --- Запуск без обов'язкової опції (очікуємо повідомлення і код 1) ---
+node main.js -h 127.0.0.1 -p 3000
+echo "код завершення: $?"
+
+# --- Недозволені методи: очікуємо 405 і заголовок Allow ---
+curl -i -X POST http://127.0.0.1:3000/404
+curl -I http://127.0.0.1:3000/404   # HEAD
+
+# --- Перевірка шляху: очікуємо 404 ---
+curl -i http://127.0.0.1:3000/abc
+curl -i http://127.0.0.1:3000/
+curl -i http://127.0.0.1:3000/4040
+curl -i --path-as-is http://127.0.0.1:3000/../etc/passwd
+
+# --- GET ---
+# Перший запит (промах кешу): картинка з http.cat, X-Image-Source: http.cat
+curl -s -D - -o /tmp/cat404.jpg http://127.0.0.1:3000/404
+ls -l cache
+# Повторний запит (влучання): X-Image-Source: cache
+curl -s -D - -o /tmp/cat404_again.jpg http://127.0.0.1:3000/404
+cmp /tmp/cat404.jpg /tmp/cat404_again.jpg && echo "файли однакові"
+# Код, якого немає на http.cat: 404, у кеш нічого не потрапляє
+curl -i http://127.0.0.1:3000/999
+ls -l cache
+
+# --- PUT ---
+# Записати власну картинку (двійкове тіло) - 201
+curl -i -X PUT --data-binary @test-data/my-picture.jpg -H "Content-Type: image/jpeg" http://127.0.0.1:3000/404
+# У кеші тепер саме наша картинка (файли збігаються байт у байт)
+cmp cache/404.jpg test-data/my-picture.jpg && echo "в кеші моя картинка"
+# GET після PUT: повертається наша картинка, джерело - cache
+curl -s -D - -o /tmp/after_put.jpg http://127.0.0.1:3000/404
+cmp /tmp/after_put.jpg test-data/my-picture.jpg && echo "GET віддав мою картинку"
+# PUT нового коду, якого ще не було в кеші - 201
+curl -i -X PUT --data-binary @test-data/my-picture.jpg http://127.0.0.1:3000/777
+
+# --- DELETE ---
+# Видалити картинку з кешу - 200
+curl -i -X DELETE http://127.0.0.1:3000/404
+ls -l cache
+# Видалити ще раз (її вже немає) - 404
+curl -i -X DELETE http://127.0.0.1:3000/404
+# Після видалення GET знову йде на http.cat (X-Image-Source: http.cat)
+curl -s -D - -o /dev/null http://127.0.0.1:3000/404
+
+# --- Помилкові ситуації (сервер має лишатися робочим) ---
+# 500: на місці файлу кешу опинилася тека (імітація помилки диска)
+mkdir -p cache/500.jpg
+curl -i http://127.0.0.1:3000/500
+curl -i -X DELETE http://127.0.0.1:3000/500
+rmdir cache/500.jpg
+# Після помилок сервер продовжує відповідати
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/418
+
+# П'ять одночасних запитів однієї ще не кешованої картинки
+for i in 1 2 3 4 5; do curl -s -o /tmp/par$i.jpg http://127.0.0.1:3000/503 & done; wait
+md5sum /tmp/par*.jpg cache/503.jpg
+
+# Зайнятий порт (другий екземпляр на тому самому порту): повідомлення і код 1
+node main.js -h 127.0.0.1 -p 3000 -c ./cache
+echo "код завершення: $?"
+
+# Тека кешу не створюється: повідомлення і код 1
+node main.js -h 127.0.0.1 -p 3000 -c /tmp/afile/cache
+echo "код завершення: $?"
+
+# Перевірка на заборонені конструкції (колбеки, синхронні fs-функції): збігів немає
+grep -nE "Sync|\.then\(|new Promise|require\(|from 'node:fs'|\.on\(|setTimeout" main.js
+
+# --- Порівняння часу відповіді: перший запит (http.cat) і повторний (кеш) ---
+rm -rf cache
+for c in 200 301 418 500 503; do
+  echo "GET /$c"
+  curl -s -o /dev/null -w "  перший (http.cat): %{time_total} с\n" http://127.0.0.1:3000/$c
+  curl -s -o /dev/null -w "  повторний (кеш):   %{time_total} с\n" http://127.0.0.1:3000/$c
+done
