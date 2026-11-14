@@ -46,3 +46,27 @@ ls -l cache
 curl -i -X DELETE http://127.0.0.1:3000/404
 # Після видалення GET знову йде на http.cat (X-Image-Source: http.cat)
 curl -s -D - -o /dev/null http://127.0.0.1:3000/404
+
+# --- Помилкові ситуації (сервер має лишатися робочим) ---
+# 500: на місці файлу кешу опинилася тека (імітація помилки диска)
+mkdir -p cache/500.jpg
+curl -i http://127.0.0.1:3000/500
+curl -i -X DELETE http://127.0.0.1:3000/500
+rmdir cache/500.jpg
+# Після помилок сервер продовжує відповідати
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/418
+
+# П'ять одночасних запитів однієї ще не кешованої картинки
+for i in 1 2 3 4 5; do curl -s -o /tmp/par$i.jpg http://127.0.0.1:3000/503 & done; wait
+md5sum /tmp/par*.jpg cache/503.jpg
+
+# Зайнятий порт (другий екземпляр на тому самому порту): повідомлення і код 1
+node main.js -h 127.0.0.1 -p 3000 -c ./cache
+echo "код завершення: $?"
+
+# Тека кешу не створюється: повідомлення і код 1
+node main.js -h 127.0.0.1 -p 3000 -c /tmp/afile/cache
+echo "код завершення: $?"
+
+# Перевірка на заборонені конструкції (колбеки, синхронні fs-функції): збігів немає
+grep -nE "Sync|\.then\(|new Promise|require\(|from 'node:fs'|\.on\(|setTimeout" main.js
