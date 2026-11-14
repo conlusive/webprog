@@ -32,7 +32,21 @@ function sendText(res, status, text, headers = {}) {
 // Єдиний колбек у програмі - обробник запиту, тому він async
 async function handleRequest(req, res) {
   try {
-    sendText(res, 405, 'Метод не підтримується', { Allow: 'GET, PUT, DELETE' });
+    if (!['GET', 'PUT', 'DELETE'].includes(req.method)) {
+      sendText(res, 405, 'Метод не підтримується', { Allow: 'GET, PUT, DELETE' });
+      return;
+    }
+
+    // Шлях має вигляд /<код стану>: рівно три цифри, тому в імені файлу
+    // не може бути "../" чи "/". Рядок запиту (?x=1) відкидаємо
+    const match = /^\/(\d{3})$/.exec(req.url.split('?')[0]);
+    if (!match) {
+      sendText(res, 404, 'Не знайдено: очікується шлях /<код стану>, наприклад /404');
+      return;
+    }
+    const code = match[1];
+
+    sendText(res, 501, 'Ще не реалізовано');
   } catch (err) {
     console.error('Помилка:', err.message);
     sendText(res, 500, 'Внутрішня помилка сервера');
