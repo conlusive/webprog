@@ -9,5 +9,9 @@
   },
   "author": "Kozopas Yaroslav",
   "license": "ISC",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "commander": "^15.1.0",
+    "superagent": "^10.4.2"
+  }
 }
