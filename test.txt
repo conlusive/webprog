@@ -70,3 +70,11 @@ echo "код завершення: $?"
 
 # Перевірка на заборонені конструкції (колбеки, синхронні fs-функції): збігів немає
 grep -nE "Sync|\.then\(|new Promise|require\(|from 'node:fs'|\.on\(|setTimeout" main.js
+
+# --- Порівняння часу відповіді: перший запит (http.cat) і повторний (кеш) ---
+rm -rf cache
+for c in 200 301 418 500 503; do
+  echo "GET /$c"
+  curl -s -o /dev/null -w "  перший (http.cat): %{time_total} с\n" http://127.0.0.1:3000/$c
+  curl -s -o /dev/null -w "  повторний (кеш):   %{time_total} с\n" http://127.0.0.1:3000/$c
+done
