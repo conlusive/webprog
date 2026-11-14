@@ -76,6 +76,20 @@ async function handlePut(code, req, res) {
   sendText(res, 201, 'Картинку збережено в кеші');
 }
 
+// DELETE: видаляє картинку з кешу
+async function handleDelete(code, res) {
+  try {
+    await fs.unlink(getFile(code));
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      sendText(res, 404, 'Картинки немає в кеші');
+      return;
+    }
+    throw err; // інша помилка диска -> 500
+  }
+  sendText(res, 200, 'Картинку видалено з кешу');
+}
+
 // ---------- 3. Обробка запиту ----------
 
 // Єдиний колбек у програмі - обробник запиту, тому він async
@@ -100,7 +114,7 @@ async function handleRequest(req, res) {
     } else if (req.method === 'PUT') {
       await handlePut(code, req, res);
     } else {
-      sendText(res, 501, 'Ще не реалізовано');
+      await handleDelete(code, res);
     }
   } catch (err) {
     console.error('Помилка:', err.message);
