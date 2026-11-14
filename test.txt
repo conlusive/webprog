@@ -26,3 +26,14 @@ cmp /tmp/cat404.jpg /tmp/cat404_again.jpg && echo "файли однакові"
 # Код, якого немає на http.cat: 404, у кеш нічого не потрапляє
 curl -i http://127.0.0.1:3000/999
 ls -l cache
+
+# --- PUT ---
+# Записати власну картинку (двійкове тіло) - 201
+curl -i -X PUT --data-binary @test-data/my-picture.jpg -H "Content-Type: image/jpeg" http://127.0.0.1:3000/404
+# У кеші тепер саме наша картинка (файли збігаються байт у байт)
+cmp cache/404.jpg test-data/my-picture.jpg && echo "в кеші моя картинка"
+# GET після PUT: повертається наша картинка, джерело - cache
+curl -s -D - -o /tmp/after_put.jpg http://127.0.0.1:3000/404
+cmp /tmp/after_put.jpg test-data/my-picture.jpg && echo "GET віддав мою картинку"
+# PUT нового коду, якого ще не було в кеші - 201
+curl -i -X PUT --data-binary @test-data/my-picture.jpg http://127.0.0.1:3000/777

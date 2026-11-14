@@ -64,6 +64,18 @@ async function handleGet(code, res) {
   sendImage(res, response.body, 'http.cat'); // потім відповідь
 }
 
+// PUT: тіло запиту зберігається в кеш (нова картинка або заміна наявної)
+async function handlePut(code, req, res) {
+  // Тіло приходить потоком шматків (Buffer); for await збирає їх без колбеків
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(chunk);
+  }
+
+  await fs.writeFile(getFile(code), Buffer.concat(chunks));
+  sendText(res, 201, 'Картинку збережено в кеші');
+}
+
 // ---------- 3. Обробка запиту ----------
 
 // Єдиний колбек у програмі - обробник запиту, тому він async
@@ -85,6 +97,8 @@ async function handleRequest(req, res) {
 
     if (req.method === 'GET') {
       await handleGet(code, res);
+    } else if (req.method === 'PUT') {
+      await handlePut(code, req, res);
     } else {
       sendText(res, 501, 'Ще не реалізовано');
     }
