@@ -27,6 +27,43 @@ function sendText(res, status, text, headers = {}) {
   res.end(text);
 }
 
+// Надсилає картинку; заголовок X-Image-Source показує, звідки вона взята
+function sendImage(res, image, source) {
+  res.writeHead(200, { 'Content-Type': 'image/jpeg', 'X-Image-Source': source });
+  res.end(image);
+}
+
+// Шлях до файлу в кеші: <тека кешу>/<код>.jpg
+function getFile(code) {
+  return path.join(options.cache, `${code}.jpg`);
+}
+
+// GET: кеш -> (промах) -> http.cat -> збереження в кеш -> відповідь
+async function handleGet(code, res) {
+  try {
+    const image = await fs.readFile(getFile(code));
+    sendImage(res, image, 'cache'); // влучання
+    return;
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      throw err; // файл є, але не читається - помилка сервера (500)
+    }
+    // ENOENT - файлу немає, це просто промах кешу
+  }
+
+  let response;
+  try {
+    response = await superagent.get(`https://http.cat/${code}`);
+  } catch (err) {
+    // superagent відхиляє проміс і для 404 від http.cat, і для мережевих помилок
+    sendText(res, 404, `Картинку ${code} не знайдено (${err.message})`);
+    return; // у кеш нічого не зберігаємо
+  }
+
+  await fs.writeFile(getFile(code), response.body); // спочатку кеш
+  sendImage(res, response.body, 'http.cat'); // потім відповідь
+}
+
 // ---------- 3. Обробка запиту ----------
 
 // Єдиний колбек у програмі - обробник запиту, тому він async
@@ -46,7 +83,11 @@ async function handleRequest(req, res) {
     }
     const code = match[1];
 
-    sendText(res, 501, 'Ще не реалізовано');
+    if (req.method === 'GET') {
+      await handleGet(code, res);
+    } else {
+      sendText(res, 501, 'Ще не реалізовано');
+    }
   } catch (err) {
     console.error('Помилка:', err.message);
     sendText(res, 500, 'Внутрішня помилка сервера');
