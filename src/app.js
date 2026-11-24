@@ -1,6 +1,7 @@
 import express from 'express';
 import db from './db.js';
 import { errorHandler } from './errors.js';
+import linksRouter from './links.js';
 
 const app = express();
 
@@ -15,6 +16,8 @@ app.get('/health', async (req, res) => {
     res.status(503).json({ status: 'error', database: 'down' });
   }
 });
+
+app.use('/api/links', linksRouter);
 
 app.use(errorHandler); // завжди останнім
 

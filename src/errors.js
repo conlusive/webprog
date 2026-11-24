@@ -22,3 +22,8 @@ export function errorHandler(err, req, res, next) {
   console.error('Помилка:', err.message);
   res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Внутрішня помилка сервера' });
 }
+
+// Однакова помилка 404 для всіх операцій, що шукають посилання за кодом
+export function notFound() {
+  return new HttpError(404, 'NOT_FOUND', 'Посилання не знайдено');
+}
