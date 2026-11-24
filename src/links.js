@@ -140,4 +140,25 @@ router.get('/:code', async (req, res) => {
   res.json(toLink(row));
 });
 
+// PATCH /api/links/:code - змінити лише url; код, дата і лічильник не змінюються
+router.patch('/:code', async (req, res) => {
+  const body = getBody(req);
+  const url = checkUrl(body.url);
+
+  const row = await db.oneOrNone('UPDATE links SET url = $1 WHERE code = $2 RETURNING *', [url, req.params.code]);
+  if (!row) {
+    throw notFound();
+  }
+  res.json(toLink(row));
+});
+
+// DELETE /api/links/:code - видалити посилання
+router.delete('/:code', async (req, res) => {
+  const result = await db.result('DELETE FROM links WHERE code = $1', [req.params.code]);
+  if (result.rowCount === 0) {
+    throw notFound();
+  }
+  res.status(204).end();
+});
+
 export default router;
