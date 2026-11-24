@@ -125,4 +125,19 @@ router.post('/', async (req, res) => {
   res.status(201).location(`/api/links/${row.code}`).json(toLink(row));
 });
 
+// GET /api/links - перелік усіх посилань, найновіші першими
+router.get('/', async (req, res) => {
+  const rows = await db.any('SELECT * FROM links ORDER BY created_at DESC, code');
+  res.json(rows.map(toLink));
+});
+
+// GET /api/links/:code - одне посилання (лічильник не змінюється)
+router.get('/:code', async (req, res) => {
+  const row = await db.oneOrNone('SELECT * FROM links WHERE code = $1', [req.params.code]);
+  if (!row) {
+    throw notFound();
+  }
+  res.json(toLink(row));
+});
+
 export default router;
