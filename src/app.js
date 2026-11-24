@@ -1,7 +1,13 @@
+import fs from 'node:fs';
 import express from 'express';
+import swaggerUi from 'swagger-ui-express';
+import YAML from 'yaml';
 import db from './db.js';
 import { errorHandler, notFound } from './errors.js';
 import linksRouter from './links.js';
+
+// Специфікація читається з openapi.yaml під час запуску: у коді її копії немає
+const spec = YAML.parse(fs.readFileSync(new URL('../openapi.yaml', import.meta.url), 'utf8'));
 
 const app = express();
 
@@ -18,6 +24,7 @@ app.get('/health', async (req, res) => {
 });
 
 app.use('/api/links', linksRouter);
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(spec)); // Swagger UI
 
 // Перехід за коротким кодом. Реєструється після всіх інших шляхів, а зарезервовані
 // слова (api, docs, health) не можна взяти як alias - тому конфлікту немає
