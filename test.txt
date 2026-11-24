@@ -1,0 +1,123 @@
+# Команди curl, згенеровані Swagger UI (Try it out -> Execute). Сервіс запущено: docker compose up
+# Для кожної команди вказано отриманий код стану.
+# Команди виконувати по черзі: деякі залежать від результатів попередніх.
+
+# --- getHealth_200: Перевірка стану сервісу, код 200 ---
+curl -X 'GET' \
+  'http://localhost:8080/health' \
+  -H 'accept: */*'
+
+# --- createLink_201_alias: Створення посилання, код 201 ---
+curl -X 'POST' \
+  'http://localhost:8080/api/links' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://uk.wikipedia.org/wiki/Express.js","alias":"express-wiki"}'
+
+# --- createLink_201_generated: Створення посилання, код 201 ---
+curl -X 'POST' \
+  'http://localhost:8080/api/links' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://expressjs.com/"}'
+
+# --- createLink_400_url: Створення посилання, код 400 ---
+curl -X 'POST' \
+  'http://localhost:8080/api/links' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"ftp://example.org/file.txt"}'
+
+# --- createLink_400_alias: Створення посилання, код 400 ---
+curl -X 'POST' \
+  'http://localhost:8080/api/links' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://expressjs.com/","alias":"docs"}'
+
+# --- createLink_400_body: Створення посилання, код 400 ---
+curl -X 'POST' \
+  'http://localhost:8080/api/links' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '[]'
+
+# --- createLink_409: Створення посилання, код 409 ---
+curl -X 'POST' \
+  'http://localhost:8080/api/links' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://expressjs.com/","alias":"express-wiki"}'
+
+# --- listLinks_200: Перелік посилань, код 200 ---
+curl -X 'GET' \
+  'http://localhost:8080/api/links' \
+  -H 'accept: */*'
+
+# --- followLink_302: Перехід за коротким посиланням, код Undocumented ---
+curl -X 'GET' \
+  'http://localhost:8080/express-wiki' \
+  -H 'accept: */*'
+
+# Swagger UI не показує 302 (браузер сам іде за Location), тому перенаправлення перевірено через curl -i:
+curl -i http://localhost:8080/express-wiki
+
+# --- followLink_404: Перехід за коротким посиланням, код 404 ---
+curl -X 'GET' \
+  'http://localhost:8080/nope' \
+  -H 'accept: */*'
+
+# --- getLink_200: Одне посилання, код 200 ---
+curl -X 'GET' \
+  'http://localhost:8080/api/links/express-wiki' \
+  -H 'accept: */*'
+
+# --- getLink_404: Одне посилання, код 404 ---
+curl -X 'GET' \
+  'http://localhost:8080/api/links/nope' \
+  -H 'accept: */*'
+
+# --- updateLink_200: Зміна оригінальної адреси, код 200 ---
+curl -X 'PATCH' \
+  'http://localhost:8080/api/links/express-wiki' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://expressjs.com/en/starter/installing.html"}'
+
+# --- updateLink_400: Зміна оригінальної адреси, код 400 ---
+curl -X 'PATCH' \
+  'http://localhost:8080/api/links/express-wiki' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"not a url"}'
+
+# --- updateLink_404: Зміна оригінальної адреси, код 404 ---
+curl -X 'PATCH' \
+  'http://localhost:8080/api/links/nope' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://expressjs.com/"}'
+
+# (код SLQ4wJ8 згенеровано сервісом у createLink_201_generated - підставте свій)
+# --- deleteLink_204: Видалення посилання, код 204 ---
+curl -X 'DELETE' \
+  'http://localhost:8080/api/links/SLQ4wJ8' \
+  -H 'accept: */*'
+
+# --- deleteLink_404: Видалення посилання, код 404 ---
+curl -X 'DELETE' \
+  'http://localhost:8080/api/links/SLQ4wJ8' \
+  -H 'accept: */*'
+
+# --- 18_getHealth_503: Перевірка стану сервісу, код 503 ---
+# (перед цим зупинено базу: docker compose stop db)
+curl -X 'GET' \
+  'http://localhost:8080/health' \
+  -H 'accept: */*'
+
+# --- 19_listLinks_500: Перелік посилань, код 500 ---
+curl -X 'GET' \
+  'http://localhost:8080/api/links' \
+  -H 'accept: */*'
+
+# Після перевірки базу запущено знову: docker compose start db
