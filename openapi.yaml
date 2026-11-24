@@ -1,0 +1,328 @@
+openapi: 3.0.3
+info:
+  title: Сервіс скорочення посилань
+  version: 1.0.0
+  description: |
+    Сервіс перетворює довгу адресу на коротку (наприклад, `http://localhost:8080/aB3xK9`).
+    Перехід за короткою адресою перенаправляє браузер на оригінальну, а кожен перехід підраховується.
+
+    Усі помилки мають однаковий формат `{ "error": "<КОД>", "message": "<текст>" }`.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: http://localhost:8080
+    description: Локальний запуск через docker compose
+# Сервіс не потребує автентифікації: порожній список явно це декларує для всіх операцій
+security: []
+tags:
+  - name: Links
+    description: Керування короткими посиланнями
+  - name: Redirect
+    description: Перехід за коротким посиланням
+  - name: Service
+    description: Службові операції
+
+paths:
+  /health:
+    get:
+      tags: [Service]
+      operationId: getHealth
+      summary: Перевірити стан сервісу та бази даних
+      responses:
+        '200':
+          description: Сервіс працює, база даних відповідає
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: ok
+                database: up
+        '503':
+          description: Сервіс працює, але база даних недоступна
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: error
+                database: down
+
+  /api/links:
+    get:
+      tags: [Links]
+      operationId: listLinks
+      summary: Отримати перелік усіх посилань
+      description: Повертає всі посилання, найновіші першими.
+      responses:
+        '200':
+          description: Перелік посилань (може бути порожнім)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Link'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Links]
+      operationId: createLink
+      summary: Створити коротке посилання
+      description: |
+        Якщо `alias` не передано, код генерує сервіс. Якщо ту саму адресу скоротити двічі,
+        створюються два окремі посилання з різними кодами та окремими лічильниками.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLink'
+            example:
+              url: https://uk.wikipedia.org/wiki/Express.js
+              alias: express-wiki
+      responses:
+        '201':
+          description: Посилання створено
+          headers:
+            Location:
+              description: Адреса створеного ресурсу, наприклад `/api/links/aB3xK9`
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Link'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Запропонований alias уже зайнятий
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: ALIAS_TAKEN
+                message: Alias вже зайнятий
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/links/{code}:
+    parameters:
+      - $ref: '#/components/parameters/Code'
+    get:
+      tags: [Links]
+      operationId: getLink
+      summary: Отримати інформацію про одне посилання
+      description: Не збільшує лічильник переходів.
+      responses:
+        '200':
+          description: Інформація про посилання
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Link'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Links]
+      operationId: updateLink
+      summary: Змінити оригінальну адресу посилання
+      description: |
+        Змінюється лише `url`. Код, дата створення та лічильник переходів залишаються
+        без змін. Повторний запит з тими самими даними дає той самий результат.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLink'
+            example:
+              url: https://expressjs.com/
+      responses:
+        '200':
+          description: Адресу змінено, повертається оновлене посилання
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Link'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Links]
+      operationId: deleteLink
+      summary: Видалити коротке посилання
+      responses:
+        '204':
+          description: Посилання видалено (тіла відповіді немає)
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /{code}:
+    parameters:
+      - $ref: '#/components/parameters/Code'
+    get:
+      tags: [Redirect]
+      operationId: followLink
+      summary: Перейти за коротким посиланням
+      description: |
+        Перенаправляє на оригінальну адресу кодом 302 і збільшує лічильник переходів на 1.
+        Код 302 (а не 301) обрано, щоб браузер не кешував перенаправлення і кожен
+        перехід доходив до сервера.
+      responses:
+        '302':
+          description: Перенаправлення на оригінальну адресу
+          headers:
+            Location:
+              description: Оригінальна адреса
+              schema:
+                type: string
+                format: uri
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  parameters:
+    Code:
+      name: code
+      in: path
+      required: true
+      description: Короткий код посилання (регістр літер важливий)
+      schema:
+        type: string
+      example: express-wiki
+
+  schemas:
+    Link:
+      type: object
+      description: Коротке посилання
+      required: [code, shortUrl, url, clicks, createdAt]
+      properties:
+        code:
+          type: string
+          readOnly: true
+          description: Короткий код (3-32 символи)
+          example: express-wiki
+        shortUrl:
+          type: string
+          format: uri
+          readOnly: true
+          description: Повна коротка адреса
+          example: http://localhost:8080/express-wiki
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Оригінальна адреса (лише http або https)
+          example: https://uk.wikipedia.org/wiki/Express.js
+        clicks:
+          type: integer
+          minimum: 0
+          readOnly: true
+          description: Кількість переходів
+          example: 0
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Дата створення
+          example: '2026-11-24T17:20:00.000Z'
+
+    CreateLink:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Довга адреса, лише http або https
+        alias:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            Власний короткий код (необов'язково). Літери, цифри, `_` і `-`.
+            Слова `api`, `docs` і `health` заборонені.
+
+    UpdateLink:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Нова довга адреса, лише http або https
+
+    Health:
+      type: object
+      required: [status, database]
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        database:
+          type: string
+          enum: [up, down]
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Машинозчитуваний код помилки
+          enum:
+            - INVALID_BODY
+            - INVALID_URL
+            - INVALID_ALIAS
+            - ALIAS_TAKEN
+            - NOT_FOUND
+            - INTERNAL_ERROR
+        message:
+          type: string
+          description: Пояснення для людини
+
+  responses:
+    BadRequest:
+      description: |
+        Некоректний запит: тіло не є JSON-об'єктом (`INVALID_BODY`), `url` не є коректною
+        адресою http/https (`INVALID_URL`) або `alias` має неприпустимий вигляд (`INVALID_ALIAS`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: INVALID_URL
+            message: url має бути коректною адресою http або https
+    NotFound:
+      description: Посилання з таким кодом не існує
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: NOT_FOUND
+            message: Посилання не знайдено
+    InternalError:
+      description: Внутрішня помилка сервера (наприклад, недоступна база даних)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: INTERNAL_ERROR
+            message: Внутрішня помилка сервера
